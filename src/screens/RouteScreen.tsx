@@ -8,12 +8,53 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Dimensions,
+  Platform,
+  Image,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { NavigationService } from "../services/NavigationService";
 import { getLocation } from "../services/LocationService";
 import { GeoPoint, RouteRecommendation } from "../models/types";
-import { formatDate } from "../utils/GeoUtils";
+
+const { width, height } = Dimensions.get("window");
+
+const isMobile = Platform.OS === "android" || Platform.OS === "ios";
+
+/**
+ * 경유지들을 기반으로 지도의 초기 영역을 계산
+ */
+const getInitialRegion = (waypoints: GeoPoint[]) => {
+  if (waypoints.length === 0) {
+    return {
+      latitude: 37.5665,
+      longitude: 126.978,
+      latitudeDelta: 0.0922,
+      longitudeDelta: 0.0421,
+    };
+  }
+
+  const latitudes = waypoints.map((point) => point.latitude);
+  const longitudes = waypoints.map((point) => point.longitude);
+
+  const minLat = Math.min(...latitudes);
+  const maxLat = Math.max(...latitudes);
+  const minLng = Math.min(...longitudes);
+  const maxLng = Math.max(...longitudes);
+
+  const centerLat = (minLat + maxLat) / 2;
+  const centerLng = (minLng + maxLng) / 2;
+
+  const latDelta = Math.max(maxLat - minLat, 0.01) * 1.3; // 여유 공간 추가
+  const lngDelta = Math.max(maxLng - minLng, 0.01) * 1.3;
+
+  return {
+    latitude: centerLat,
+    longitude: centerLng,
+    latitudeDelta: latDelta,
+    longitudeDelta: lngDelta,
+  };
+};
 
 /**
  * 항해 경로 추천 화면
@@ -100,12 +141,105 @@ const RouteScreen: React.FC = () => {
     }
   };
 
-  // 안전도 표시 컬러
-  const getSafetyColor = (score: number): string => {
-    if (score >= 80) return "#4CAF50"; // 안전 - 녹색
-    if (score >= 60) return "#FFEB3B"; // 주의 - 노랑
-    if (score >= 40) return "#FF9800"; // 경고 - 주황
-    return "#F44336"; // 위험 - 빨강
+  // 이미지 기반 지도 컴포넌트
+  const ImageMapView = ({ route }: { route: RouteRecommendation }) => {
+    // 좌표를 이미지 상의 픽셀 위치로 변환
+    const coordinateToPixel = (lat: number, lng: number) => {
+      // 지구 전체를 기준으로 한 정규화된 좌표 계산
+      const x = ((lng + 180) / 360) * (width - 32); // 좌우 여백 16px씩
+      const y = ((90 - lat) / 180) * 200; // 지도 높이 200px 기준
+      return { x, y };
+    };
+
+    // 두 점 사이의 거리와 각도 계산
+    const calculateLineSegments = (points: GeoPoint[]) => {
+      const segments = [];
+      for (let i = 0; i < points.length - 1; i++) {
+        const start = coordinateToPixel(
+          points[i].latitude,
+          points[i].longitude
+        );
+        const end = coordinateToPixel(
+          points[i + 1].latitude,
+          points[i + 1].longitude
+        );
+
+        const distance = Math.sqrt(
+          Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2)
+        );
+
+        const angle =
+          Math.atan2(end.y - start.y, end.x - start.x) * (180 / Math.PI);
+
+        segments.push({
+          left: start.x,
+          top: start.y,
+          width: distance,
+          angle: angle,
+        });
+      }
+      return segments;
+    };
+
+    const lineSegments = calculateLineSegments(route.waypoints);
+
+    return (
+      <View style={styles.imageMapContainer}>
+        <Image
+          source={require("../../assets/images/earth-texture.jpg")}
+          style={styles.earthImage}
+          resizeMode="cover"
+        />
+
+        {/* 경로 선 표시 */}
+        {lineSegments.map((segment, index) => (
+          <View
+            key={`line-${index}`}
+            style={[
+              styles.routeLine,
+              {
+                left: segment.left,
+                top: segment.top,
+                width: segment.width,
+                transform: [{ rotate: `${segment.angle}deg` }],
+              },
+            ]}
+          />
+        ))}
+
+        {/* 경유지 마커들 */}
+        {route.waypoints.map((point, index) => {
+          const isStart = index === 0;
+          const isEnd = index === route.waypoints.length - 1;
+          const pixelPosition = coordinateToPixel(
+            point.latitude,
+            point.longitude
+          );
+
+          return (
+            <View
+              key={index}
+              style={[
+                styles.marker,
+                {
+                  left: pixelPosition.x - 10,
+                  top: pixelPosition.y - 10,
+                  backgroundColor: isStart
+                    ? "#4CAF50"
+                    : isEnd
+                    ? "#F44336"
+                    : "#1976D2",
+                },
+              ]}
+            >
+              <Text style={styles.markerText}>
+                {isStart ? "S" : isEnd ? "E" : index}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    );
   };
 
   return (
@@ -167,82 +301,68 @@ const RouteScreen: React.FC = () => {
           <View style={styles.routeResult}>
             <Text style={styles.resultTitle}>추천 경로</Text>
 
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Feather name="map-pin" size={20} color="#BBDEFB" />
-                <Text style={styles.infoLabel}>총 거리</Text>
-                <Text style={styles.infoValue}>
-                  {route.distance.toFixed(1)} km
-                </Text>
-              </View>
-
-              <View style={styles.infoItem}>
-                <Feather name="clock" size={20} color="#BBDEFB" />
-                <Text style={styles.infoLabel}>예상 소요 시간</Text>
-                <Text style={styles.infoValue}>
-                  {Math.round(route.estimatedTravelTime / 60)} 시간
-                </Text>
-              </View>
+            {/* API 응답 메시지 표시 */}
+            <View style={styles.messageContainer}>
+              <Feather name="info" size={16} color="#BBDEFB" />
+              <Text style={styles.messageText}>{route.message}</Text>
             </View>
 
-            <View style={styles.safetyContainer}>
-              <Text style={styles.safetyLabel}>안전도</Text>
-              <View style={styles.safetyBarContainer}>
-                <View
-                  style={[
-                    styles.safetyBar,
-                    {
-                      width: `${route.safetyScore}%`,
-                      backgroundColor: getSafetyColor(route.safetyScore),
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.safetyScore}>{route.safetyScore}/100</Text>
+            {/* 경로 지도 */}
+            <View style={styles.mapContainer}>
+              <Text style={styles.mapTitle}>경로 지도</Text>
+              <ImageMapView route={route} />
             </View>
 
-            <Text style={styles.waypointsTitle}>경유지</Text>
-            {route.waypoints.map((point, index) => (
-              <View key={index} style={styles.waypoint}>
-                <View style={styles.waypointDot} />
-                <Text style={styles.waypointText}>
-                  {point.latitude.toFixed(4)}, {point.longitude.toFixed(4)}
-                </Text>
-              </View>
-            ))}
-
-            <Text style={styles.weatherTitle}>예상 날씨 정보</Text>
+            {/* 경유지 정보 */}
+            <Text style={styles.waypointsTitle}>
+              경로 ({route.waypoints.length}개 지점)
+            </Text>
             <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.weatherScroll}
+              style={styles.waypointsContainer}
+              showsVerticalScrollIndicator={false}
             >
-              {route.weatherConditionsOnRoute.map((item, index) => (
-                <View key={index} style={styles.weatherItem}>
-                  <Text style={styles.weatherLocation}>경유지 {index + 1}</Text>
-                  <View style={styles.weatherData}>
-                    <View style={styles.weatherDataRow}>
-                      <Feather name="thermometer" size={16} color="#BBDEFB" />
-                      <Text style={styles.weatherDataText}>
-                        {item.weather.temperature.toFixed(1)}°C
-                      </Text>
-                    </View>
-                    <View style={styles.weatherDataRow}>
-                      <Feather name="wind" size={16} color="#BBDEFB" />
-                      <Text style={styles.weatherDataText}>
-                        {item.weather.windSpeed} m/s
-                      </Text>
-                    </View>
-                    <View style={styles.weatherDataRow}>
-                      <Feather name="cloud" size={16} color="#BBDEFB" />
-                      <Text style={styles.weatherDataText}>
-                        {item.weather.cloudDensity}%
-                      </Text>
-                    </View>
+              {route.waypoints.map((point, index) => {
+                const isStart = index === 0;
+                const isEnd = index === route.waypoints.length - 1;
+                const label = isStart
+                  ? "출발지"
+                  : isEnd
+                  ? "도착지"
+                  : `경유지 ${index}`;
+
+                return (
+                  <View key={index} style={styles.waypoint}>
+                    <View
+                      style={[
+                        styles.waypointDot,
+                        {
+                          backgroundColor: isStart
+                            ? "#4CAF50"
+                            : isEnd
+                            ? "#F44336"
+                            : "#1976D2",
+                        },
+                      ]}
+                    />
+                    <Text style={styles.waypointText}>
+                      {label}: {point.latitude.toFixed(4)},{" "}
+                      {point.longitude.toFixed(4)}
+                    </Text>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </ScrollView>
+
+            {/* 경로 정보 */}
+            <View style={styles.routeInfo}>
+              <Text style={styles.routeInfoTitle}>경로 정보</Text>
+              <Text style={styles.routeInfoText}>
+                총 {route.waypoints.length}개의 경유지를 통과하는 경로입니다.
+              </Text>
+              <Text style={styles.routeInfoText}>
+                출발지에서 목적지까지의 최적 경로를 제공합니다.
+              </Text>
+            </View>
 
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.actionButton}>
@@ -404,6 +524,10 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginBottom: 12,
   },
+  waypointsContainer: {
+    maxHeight: 200,
+    marginBottom: 16,
+  },
   waypoint: {
     flexDirection: "row",
     alignItems: "center",
@@ -420,38 +544,109 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#FFFFFF",
   },
-  weatherTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#FFFFFF",
-    marginTop: 20,
-    marginBottom: 12,
-  },
-  weatherScroll: {
-    marginBottom: 20,
-  },
-  weatherItem: {
+  messageContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.2)",
     borderRadius: 8,
     padding: 12,
-    marginRight: 12,
-    minWidth: 120,
+    marginBottom: 16,
   },
-  weatherLocation: {
+  messageText: {
     fontSize: 14,
     color: "#BBDEFB",
+    marginLeft: 8,
+    flex: 1,
+  },
+  routeInfo: {
+    backgroundColor: "rgba(0, 0, 0, 0.2)",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  routeInfoTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#FFFFFF",
     marginBottom: 8,
   },
-  weatherData: {
-    gap: 4,
+  routeInfoText: {
+    fontSize: 14,
+    color: "#BBDEFB",
+    marginBottom: 4,
   },
-  weatherDataRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  mapContainer: {
+    backgroundColor: "rgba(0, 0, 0, 0.2)",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
   },
-  weatherDataText: {
+  mapTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
     color: "#FFFFFF",
-    marginLeft: 8,
+    marginBottom: 12,
+  },
+  map: {
+    width: "100%",
+    height: 200,
+    borderRadius: 8,
+  },
+  mapPlaceholder: {
+    width: "100%",
+    height: 200,
+    borderRadius: 8,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  mapPlaceholderText: {
+    fontSize: 16,
+    color: "#BBDEFB",
+    textAlign: "center",
+    marginTop: 12,
+    fontWeight: "bold",
+  },
+  mapPlaceholderSubText: {
+    fontSize: 14,
+    color: "#BBDEFB",
+    textAlign: "center",
+    marginTop: 4,
+    opacity: 0.7,
+  },
+  imageMapContainer: {
+    width: "100%",
+    height: 200,
+    borderRadius: 8,
+    position: "relative",
+    overflow: "hidden",
+  },
+  earthImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 8,
+  },
+  marker: {
+    position: "absolute",
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  markerText: {
+    fontSize: 12,
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+  routeLine: {
+    position: "absolute",
+    height: 2,
+    backgroundColor: "#1976D2",
+    transformOrigin: "left center",
   },
   buttonRow: {
     flexDirection: "row",

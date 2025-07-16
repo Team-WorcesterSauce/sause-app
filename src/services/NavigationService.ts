@@ -1,15 +1,12 @@
-import {
-  GeoPoint,
-  RouteRecommendation,
-  WeatherData,
-  WeatherOnRoute,
-} from "../models/types";
-import { WeatherService } from "./WeatherService";
+import { GeoPoint, RouteRecommendation } from "../models/types";
 
 /**
  * Service for handling route recommendations and navigation
  */
 export class NavigationService {
+  private static readonly API_BASE_URL =
+    process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
+
   /**
    * Generates a recommended route based on start and end points
    */
@@ -18,68 +15,60 @@ export class NavigationService {
     endPoint: GeoPoint
   ): Promise<RouteRecommendation> {
     try {
-      // In a real implementation, this would call an API service that considers:
-      // 1. Current and forecasted weather along potential routes
-      // 2. Marine traffic and obstacles
-      // 3. Optimal path calculation
+      const params = new URLSearchParams({
+        startLat: Number(startPoint.latitude).toFixed(4),
+        startLon: Number(startPoint.longitude).toFixed(4),
+        endLat: Number(endPoint.latitude).toFixed(4),
+        endLon: Number(endPoint.longitude).toFixed(4),
+      });
 
-      // For this example, we'll create a simplified mock implementation
+      const response = await fetch(`${this.API_BASE_URL}/route?${params}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+        body: params
+      });
 
-      // Calculate the direct distance
-      const distance = this.calculateDistance(startPoint, endPoint);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-      // Create waypoints (simple linear interpolation for demo)
-      const waypoints: GeoPoint[] = this.generateWaypoints(
-        startPoint,
-        endPoint,
-        5
-      );
-
-      // Fetch weather data for each waypoint (in a real app, would be more sophisticated)
-      const weatherOnRoute: WeatherOnRoute[] =
-        await this.fetchWeatherForWaypoints(waypoints);
-
-      // Calculate safety score based on weather conditions (simplified)
-      const safetyScore = this.calculateSafetyScore(weatherOnRoute);
-
-      // Calculate estimated travel time (very simplified)
-      // Assuming an average speed of 20 km/h
-      const estimatedTravelTime = (distance * 60) / 20; // convert to minutes
-
-      return {
-        startPoint,
-        endPoint,
-        waypoints,
-        distance,
-        estimatedTravelTime,
-        safetyScore,
-        weatherConditionsOnRoute: weatherOnRoute,
-      };
+      const data = await response.json();
+      return data;
     } catch (error) {
-      console.error("Error getting recommended route:", error);
-      throw error;
+      console.error("Error fetching route:", error);
+
+      // Fallback to mock data if API call fails
+      return this.getMockRoute(startPoint, endPoint);
     }
   }
 
   /**
-   * Calculates the distance between two points in kilometers
+   * Fallback mock implementation
    */
-  private static calculateDistance(point1: GeoPoint, point2: GeoPoint): number {
-    const R = 6371; // Radius of Earth in kilometers
-    const dLat = this.deg2rad(point2.latitude - point1.latitude);
-    const dLon = this.deg2rad(point2.longitude - point1.longitude);
+  private static getMockRoute(
+    startPoint: GeoPoint,
+    endPoint: GeoPoint
+  ): RouteRecommendation {
+    // Generate waypoints including start and end points
+    const intermediateWaypoints = this.generateWaypoints(
+      startPoint,
+      endPoint,
+      3
+    );
+    const waypoints: GeoPoint[] = [
+      startPoint,
+      ...intermediateWaypoints,
+      endPoint,
+    ];
 
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.deg2rad(point1.latitude)) *
-        Math.cos(this.deg2rad(point2.latitude)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
-
-    return distance;
+    return {
+      waypoints,
+      message:
+        "Mock route generated successfully. API connection failed, showing demo data.",
+    };
   }
 
   /**
@@ -102,100 +91,5 @@ export class NavigationService {
     }
 
     return waypoints;
-  }
-
-  /**
-   * Fetch weather data for each waypoint
-   */
-  private static async fetchWeatherForWaypoints(
-    waypoints: GeoPoint[]
-  ): Promise<WeatherOnRoute[]> {
-    const weatherPromises = waypoints.map(async (point) => {
-      try {
-        const weather = await WeatherService.getCurrentWeather(point);
-        return {
-          point,
-          weather,
-          timestamp: new Date(),
-        };
-      } catch (error) {
-        console.error("Error fetching weather for waypoint:", error);
-        // Provide fallback data if API call fails
-        return {
-          point,
-          weather: this.getFallbackWeatherData(),
-          timestamp: new Date(),
-        };
-      }
-    });
-
-    return Promise.all(weatherPromises);
-  }
-
-  /**
-   * Calculate a safety score based on weather conditions
-   */
-  private static calculateSafetyScore(
-    weatherOnRoute: WeatherOnRoute[]
-  ): number {
-    if (weatherOnRoute.length === 0) return 50; // default medium score if no data
-
-    // Calculate based on various weather factors
-    let totalScore = 0;
-
-    for (const point of weatherOnRoute) {
-      const weather = point.weather;
-      let pointScore = 100;
-
-      // Reduce score based on bad weather conditions
-
-      // Wind speed factor (stronger winds reduce safety)
-      if (weather.windSpeed > 20) pointScore -= 30;
-      else if (weather.windSpeed > 15) pointScore -= 20;
-      else if (weather.windSpeed > 10) pointScore -= 10;
-
-      // Precipitation factor
-      if (weather.precipitationType === "hail") pointScore -= 30;
-      else if (weather.precipitationType === "snow") pointScore -= 20;
-      else if (weather.precipitationType === "rain") pointScore -= 10;
-
-      // Visibility factor
-      if (weather.visibility < 2) pointScore -= 25;
-      else if (weather.visibility < 5) pointScore -= 15;
-      else if (weather.visibility < 8) pointScore -= 5;
-
-      // Add more factors as needed
-
-      // Ensure score stays in valid range
-      pointScore = Math.max(0, Math.min(100, pointScore));
-
-      totalScore += pointScore;
-    }
-
-    return Math.round(totalScore / weatherOnRoute.length);
-  }
-
-  /**
-   * Provides fallback weather data if API call fails
-   */
-  private static getFallbackWeatherData(): WeatherData {
-    return {
-      temperature: 20,
-      windDirection: 180,
-      windSpeed: 5,
-      cloudDensity: 30,
-      precipitationType: "none",
-      pressure: 1013,
-      humidity: 60,
-      visibility: 10,
-      timestamp: new Date(),
-    };
-  }
-
-  /**
-   * Convert degrees to radians
-   */
-  private static deg2rad(deg: number): number {
-    return deg * (Math.PI / 180);
   }
 }

@@ -26,13 +26,8 @@ export interface GeoPoint {
 }
 
 export interface RouteRecommendation {
-  startPoint: GeoPoint;
-  endPoint: GeoPoint;
   waypoints: GeoPoint[];
-  estimatedTravelTime: number; // in minutes
-  distance: number; // in kilometers
-  safetyScore: number; // 0-100
-  weatherConditionsOnRoute: WeatherOnRoute[];
+  message: string;
 }
 
 export interface WeatherOnRoute {
