@@ -213,6 +213,3 @@ export class WeatherService {
     return "none";
   }
 }
-
-
-//내용:  url:  method: GET request:  response: 

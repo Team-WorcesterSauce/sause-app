@@ -1,16 +1,244 @@
-import React, { useRef, useEffect, useState } from "react";
-import { View, StyleSheet, Dimensions, Text } from "react-native";
-import { Canvas } from "@react-three/fiber/native";
-import * as THREE from "three";
-import { OrbitControls } from "@react-three/drei/native";
+import React, { useRef, useState } from "react";
+import {
+  View,
+  Text,
+  Dimensions,
+  StyleSheet,
+  PanResponder,
+  GestureResponderEvent,
+  PanResponderGestureState,
+} from "react-native";
+import { ExpoWebGLRenderingContext, GLView } from "expo-gl";
 import { Asset } from "expo-asset";
-import { GeoPoint } from "../models/types";
-import SimpleGlobe from "./SimpleGlobe";
-import { EarthApi } from "../services/api/EarthApi";
-import { EventLocation } from "../models/EarthTypes";
+import * as THREE from "three";
 
-// 범례 컴포넌트
-const Legend: React.FC = () => {
+const { width, height } = Dimensions.get("window");
+
+export interface GeoPoint {
+  latitude: number;
+  longitude: number;
+}
+
+interface Globe3DProps {
+  currentLocation?: GeoPoint;
+  weatherPoints?: Array<{
+    location: GeoPoint;
+    type: "rain" | "snow" | "hail" | "clear" | "cloud";
+  }>;
+}
+
+export default function Globe3D({
+  currentLocation,
+  weatherPoints,
+}: Globe3DProps) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const earthRef = useRef<THREE.Mesh>(null);
+  const cameraRef = useRef<THREE.Camera>(null);
+
+  // 로딩 타임아웃 설정 (5초)
+  React.useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.warn("Loading timeout reached");
+        setError("지구본 로딩 시간이 초과되었습니다. 기본 지구본을 표시합니다.");
+        setLoading(false);
+      }
+    }, 5000);
+
+    return () => clearTimeout(timeout);
+  }, [loading]);
+
+  const onContextCreate = async (gl: ExpoWebGLRenderingContext) => {
+    try {
+      console.log("GLView context created, starting initialization...");
+      
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+      camera.position.z = 8;
+      cameraRef.current = camera;
+
+      const renderer = new THREE.WebGLRenderer({
+        context: gl,
+      });
+      renderer.setSize(width, height);
+
+      // Lighting
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight.position.set(10, 10, 10);
+      scene.add(dirLight);
+
+      console.log("Scene and lighting setup complete");
+
+      // Earth with basic material first (no texture)
+      const geometry = new THREE.SphereGeometry(2.5, 64, 64);
+      const material = new THREE.MeshStandardMaterial({ 
+        color: "#4A90E2",
+        metalness: 0.1,
+        roughness: 0.8
+      });
+      const earth = new THREE.Mesh(geometry, material);
+      earthRef.current = earth;
+      scene.add(earth);
+
+      console.log("Earth mesh created");
+
+      // Marker: current location
+      if (currentLocation) {
+        scene.add(createMarker(currentLocation, "#ff0000", 0.1));
+        console.log("Current location marker added");
+      }
+
+      // Weather markers
+      weatherPoints?.forEach(({ location, type }) => {
+        scene.add(createMarker(location, getWeatherColor(type), 0.06));
+      });
+      console.log("Weather markers added");
+
+      const animate = () => {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+        gl.endFrameEXP();
+      };
+      
+      animate();
+      console.log("Animation started");
+      
+      // Set loading to false immediately after basic setup
+      setLoading(false);
+      setError(null);
+
+      // Load texture asynchronously without blocking
+      loadTexture(require("../../assets/images/earth-texture.png"))
+        .then((texture) => {
+          console.log("Texture loaded successfully");
+          material.map = texture;
+          material.needsUpdate = true;
+        })
+        .catch((textureError) => {
+          console.warn("Texture loading failed, using solid color:", textureError);
+          // Continue with solid color material - no error shown to user
+        });
+      
+    } catch (error) {
+      console.error("Error in onContextCreate:", error);
+      setError("지구본 초기화 중 오류가 발생했습니다.");
+      setLoading(false);
+    }
+  };
+
+  // 사용자의 터치 회전을 PanResponder로 처리
+  const lastTouch = useRef({ x: 0, y: 0 });
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: (
+        evt: GestureResponderEvent,
+        gestureState: PanResponderGestureState
+      ) => {
+        lastTouch.current = { x: gestureState.x0, y: gestureState.y0 };
+      },
+      onPanResponderMove: (
+        evt: GestureResponderEvent,
+        gestureState: PanResponderGestureState
+      ) => {
+        if (earthRef.current) {
+          const dx = gestureState.moveX - lastTouch.current.x;
+          const dy = gestureState.moveY - lastTouch.current.y;
+          const rotationSpeed = 0.005;
+
+          earthRef.current.rotation.y += dx * rotationSpeed;
+          earthRef.current.rotation.x += dy * rotationSpeed;
+
+          lastTouch.current = { x: gestureState.moveX, y: gestureState.moveY };
+        }
+      },
+    })
+  ).current;
+
+  return (
+    <View style={styles.container} {...panResponder.panHandlers}>
+      {loading && (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>지구본 로딩 중...</Text>
+        </View>
+      )}
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+      <GLView style={styles.canvas} onContextCreate={onContextCreate} />
+      <Legend />
+    </View>
+  );
+}
+
+const loadTexture = async (localAsset: number): Promise<THREE.Texture> => {
+  try {
+    console.log("Starting texture load...");
+    const asset = Asset.fromModule(localAsset);
+    await asset.downloadAsync();
+    console.log("Asset downloaded, localUri:", asset.localUri);
+    
+    return await new Promise<THREE.Texture>((resolve, reject) => {
+      const loader = new THREE.TextureLoader();
+      loader.load(
+        asset.localUri || "",
+        (texture) => {
+          console.log("Texture loaded successfully");
+          resolve(texture);
+        },
+        (progress) => {
+          console.log("Texture loading progress:", progress);
+        },
+        (error) => {
+          console.error("Texture loading error:", error);
+          reject(error);
+        }
+      );
+    });
+  } catch (error) {
+    console.error("Error in loadTexture:", error);
+    throw error;
+  }
+};
+
+const createMarker = (location: GeoPoint, color: string, size: number) => {
+  const phi = (90 - location.latitude) * (Math.PI / 180);
+  const theta = (location.longitude + 180) * (Math.PI / 180);
+  const r = 2.5 + 0.05;
+
+  const x = -r * Math.sin(phi) * Math.cos(theta);
+  const y = r * Math.cos(phi);
+  const z = r * Math.sin(phi) * Math.sin(theta);
+
+  const geometry = new THREE.SphereGeometry(size, 16, 16);
+  const material = new THREE.MeshBasicMaterial({ color });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(x, y, z);
+  return mesh;
+};
+
+const getWeatherColor = (type: string): string => {
+  switch (type) {
+    case "rain":
+      return "#4287f5";
+    case "snow":
+      return "#ffffff";
+    case "hail":
+      return "#b3c7f7";
+    case "clear":
+      return "#f2e05c";
+    case "cloud":
+      return "#b8b8b8";
+    default:
+      return "#ffffff";
+  }
+};
+
+const Legend = () => {
   const legendItems = [
     { color: "#ff0000", label: "현재 위치", icon: "📍" },
     { color: "#f2e05c", label: "맑음", icon: "☀️" },
@@ -34,366 +262,51 @@ const Legend: React.FC = () => {
   );
 };
 
-// 오류 경계 컴포넌트
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode; fallback: React.ReactNode },
-  { hasError: boolean; error?: Error }
-> {
-  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("Globe3D Error:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback;
-    }
-    return this.props.children;
-  }
-}
-
-// 텍스처 로딩 함수
-const loadTexture = async (localAsset: any): Promise<THREE.Texture> => {
-  const asset = Asset.fromModule(localAsset);
-  await asset.downloadAsync();
-  
-  return new Promise((resolve, reject) => {
-    const loader = new THREE.TextureLoader();
-    loader.load(
-      asset.localUri || "",
-      (texture) => {
-        resolve(texture);
-      },
-      undefined,
-      (error) => {
-        reject(error);
-      }
-    );
-  });
-};
-
-interface Globe3DProps {
-  currentLocation?: GeoPoint;
-  weatherPoints?: Array<{
-    location: GeoPoint;
-    type: "rain" | "snow" | "hail" | "clear" | "cloud";
-  }>;
-}
-
-/**
- * 3D 지구본 컴포넌트
- * Three.js와 React Three Fiber를 사용하여 3D 지구본을 렌더링합니다.
- */
-const Globe3D: React.FC<Globe3DProps> = ({
-  currentLocation,
-  weatherPoints,
-}) => {
-  const [visualizationData, setVisualizationData] = useState<EventLocation[]>([]);
-
-  // 시각화 데이터 로드
-  useEffect(() => {
-    const loadVisualizationData = async () => {
-      if (currentLocation) {
-        try {
-          const response = await EarthApi.getVisualizationData(
-            currentLocation.latitude,
-            currentLocation.longitude
-          );
-          setVisualizationData(response.eventLocations);
-        } catch (error) {
-          console.error("시각화 데이터 로드 실패:", error);
-        }
-      }
-    };
-
-    loadVisualizationData();
-  }, [currentLocation]);
-
-  return (
-    <ErrorBoundary
-      fallback={
-        <SimpleGlobe
-          currentLocation={currentLocation}
-          weatherPoints={weatherPoints}
-        />
-      }
-    >
-      <View style={styles.container}>
-        <React.Suspense
-          fallback={
-            <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>지구본 로딩 중...</Text>
-            </View>
-          }
-        >
-          <Canvas
-            style={styles.canvas}
-            camera={{ position: [0, 0, 8], fov: 55 }}
-          >
-            <ambientLight intensity={10} />
-            <pointLight position={[10, 10, 10]} intensity={1.5} />
-            <pointLight position={[-10, -10, -10]} intensity={0.8} />
-            <directionalLight position={[0, 0, 5]} intensity={0.5} />
-            <Earth
-              position={[0, 0, 0]}
-              currentLocation={currentLocation}
-              weatherPoints={weatherPoints}
-              visualizationPoints={visualizationData}
-            />
-            <OrbitControls
-              enableZoom={true}
-              enablePan={true}
-              enableRotate={true}
-              zoomSpeed={0.6}
-              panSpeed={0.6}
-              rotateSpeed={0.9}
-              minDistance={3}
-              maxDistance={15}
-              enableDamping={true}
-              dampingFactor={0.05}
-            />
-          </Canvas>
-        </React.Suspense>
-
-        {/* 범례 */}
-        <Legend />
-      </View>
-    </ErrorBoundary>
-  );
-};
-
-interface EarthProps {
-  position: [number, number, number];
-  currentLocation?: GeoPoint;
-  weatherPoints?: Array<{
-    location: GeoPoint;
-    type: "rain" | "snow" | "hail" | "clear" | "cloud";
-  }>;
-  visualizationPoints?: EventLocation[];
-}
-
-/**
- * 지구본 메쉬 컴포넌트
- */
-const Earth: React.FC<EarthProps> = ({
-  position,
-  currentLocation,
-  weatherPoints,
-  visualizationPoints,
-}) => {
-  // 텍스처 상태 관리
-  const [earthTexture, setEarthTexture] = useState<THREE.Texture | null>(null);
-  const [cloudsTexture, setCloudsTexture] = useState<THREE.Texture | null>(
-    null
-  );
-  const [texturesLoaded, setTexturesLoaded] = useState(false);
-
-  const earthRef = useRef<THREE.Mesh>(null);
-  const cloudsRef = useRef<THREE.Mesh>(null);
-
-  // 텍스처 로드
-  useEffect(() => {
-    const loadTextures = async () => {
-      try {
-        const [earthTex, cloudsTex] = await Promise.all([
-          loadTexture(require("../../assets/images/earth-texture.png")),
-          loadTexture(require("../../assets/images/clouds.png")),
-        ]);
-
-        setEarthTexture(earthTex);
-        setCloudsTexture(cloudsTex);
-        setTexturesLoaded(true);
-      } catch (error) {
-        console.error("텍스처 로드 실패:", error);
-        setTexturesLoaded(true); // 실패해도 기본 색상으로 렌더링
-      }
-    };
-
-    loadTextures();
-  }, []);
-
-  // 현재 위치에서 지구본 방향 조정 함수
-  useEffect(() => {
-    if (currentLocation && earthRef.current) {
-      // 위도/경도를 3D 구체 위의 좌표로 변환
-      const phi = (90 - currentLocation.latitude) * (Math.PI / 180);
-      const theta = (currentLocation.longitude + 180) * (Math.PI / 180);
-
-      // 구체 표면 위치 계산
-      const x = -Math.sin(phi) * Math.cos(theta);
-      const z = Math.sin(phi) * Math.sin(theta);
-      const y = Math.cos(phi);
-
-      // 여기서 카메라 위치를 조정하거나 회전을 조정할 수 있음
-      // (이 예제에서는 구현되지 않음)
-    }
-  }, [currentLocation]);
-
-  // 날씨 점 색상 설정
-  const getWeatherPointColor = (type: string) => {
-    switch (type) {
-      case "rain":
-        return "#4287f5"; // 파란색
-      case "snow":
-        return "#ffffff"; // 흰색
-      case "hail":
-        return "#b3c7f7"; // 옅은 파란색
-      case "clear":
-        return "#f2e05c"; // 노란색
-      case "cloud":
-        return "#b8b8b8"; // 회색
-      default:
-        return "#ffffff"; // 기본값
-    }
-  };
-
-  // 시각화 포인트 렌더링
-  const renderVisualizationPoints = () => {
-    return visualizationPoints?.map((point, index) => (
-      <LocationMarker
-        key={`viz-${index}`}
-        location={{ latitude: point.lat, longitude: point.lon }}
-        color="#00ff00"
-        size={0.1}
-      />
-    ));
-  };
-
-  return (
-    <group position={position}>
-      {/* 텍스처 로딩 중일 때는 렌더링하지 않음 */}
-      {texturesLoaded && (
-        <>
-          {/* 지구본 */}
-          <mesh ref={earthRef}>
-            <sphereGeometry args={[2.5, 64, 64]} />
-            <meshStandardMaterial
-              map={earthTexture}
-              color={earthTexture ? undefined : "#4A90E2"}
-              metalness={0.0}
-              roughness={0.8}
-              emissive={earthTexture ? "#000000" : "#001122"}
-              emissiveIntensity={earthTexture ? 0 : 0.1}
-            />
-
-            {/* 현재 위치 표시 - 지구본 자식으로 배치 */}
-            {currentLocation && (
-              <LocationMarker
-                location={currentLocation}
-                color="#ff0000"
-                size={0.15}
-              />
-            )}
-
-            {/* 날씨 정보 표시 - 지구본 자식으로 배치 */}
-            {weatherPoints &&
-              weatherPoints.map((point, index) => (
-                <LocationMarker
-                  key={`weather-${index}`}
-                  location={point.location}
-                  color={getWeatherPointColor(point.type)}
-                  size={0.1}
-                />
-              ))}
-
-            {/* 시각화 포인트 표시 */}
-            {renderVisualizationPoints()}
-          </mesh>
-
-          {/* 구름층 */}
-          {/* <mesh ref={cloudsRef}>
-            <sphereGeometry args={[2.55, 64, 64]} />
-            <meshStandardMaterial
-              map={cloudsTexture}
-              color={cloudsTexture ? undefined : "#FFFFFF"}
-              transparent={true}
-              opacity={0.3}
-              depthWrite={false}
-              emissive="#ffffff"
-              emissiveIntensity={0.1}
-            />
-          </mesh> */}
-        </>
-      )}
-    </group>
-  );
-};
-
-interface LocationMarkerProps {
-  location: GeoPoint;
-  color: string;
-  size: number;
-  ref?: React.Ref<THREE.Mesh>;
-}
-
-/**
- * 위치 마커 컴포넌트
- */
-const LocationMarker: React.FC<LocationMarkerProps> = ({
-  location,
-  color,
-  size,
-}) => {
-  // 위도/경도를 3D 구체 위의 좌표로 변환
-  const phi = (90 - location.latitude) * (Math.PI / 180);
-  const theta = (location.longitude + 180) * (Math.PI / 180);
-
-  // 구체 표면 위치 계산 (지구 반지름 + 약간의 오프셋)
-  const radius = 2.5 + 0.05; // 지구 반지름 + 오프셋
-  const x = -radius * Math.sin(phi) * Math.cos(theta);
-  const z = radius * Math.sin(phi) * Math.sin(theta);
-  const y = radius * Math.cos(phi);
-
-  return (
-    <mesh position={[x, y, z]}>
-      <sphereGeometry args={[size, 16, 16]} />
-      <meshBasicMaterial color={color} />
-    </mesh>
-  );
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "rgb(14, 25, 40)",
   },
   canvas: {
-    width: Dimensions.get("window").width,
-    height: Dimensions.get("window").height,
+    width,
+    height,
   },
   loadingContainer: {
-    flex: 1,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgb(14, 25, 40)",
+    zIndex: 10,
   },
   loadingText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
   },
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgb(14, 25, 40)",
-  },
   errorText: {
     color: "#ff6b6b",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 10,
   },
-  errorDetails: {
+  errorContainer: {
+    position: "absolute",
+    top: 50,
+    left: 20,
+    right: 20,
+    backgroundColor: "rgba(255, 107, 107, 0.1)",
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+    zIndex: 5,
+  },
+  errorSubText: {
     color: "#ccc",
     fontSize: 14,
     textAlign: "center",
@@ -437,5 +350,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-
-export default Globe3D;

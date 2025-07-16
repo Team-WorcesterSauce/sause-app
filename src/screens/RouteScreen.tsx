@@ -682,5 +682,5 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
-export default RouteScreen;
 
+export default RouteScreen;
