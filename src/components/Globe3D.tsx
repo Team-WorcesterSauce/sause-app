@@ -113,7 +113,7 @@ const Globe3D: React.FC<Globe3DProps> = ({
         >
           <Canvas
             style={styles.canvas}
-            camera={{ position: [0, 0, 8], fov: 55 }}
+            camera={{ position: [0, 0, 8], fov: 45 }}
           >
             <ambientLight intensity={10} />
             <pointLight position={[10, 10, 10]} intensity={1.5} />
