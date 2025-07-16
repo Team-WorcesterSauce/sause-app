@@ -11,6 +11,8 @@ import {
   Dimensions,
   Platform,
   Image,
+  SafeAreaView,
+  StatusBar,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { NavigationService } from "../services/NavigationService";
@@ -146,8 +148,10 @@ const RouteScreen: React.FC = () => {
     // 좌표를 이미지 상의 픽셀 위치로 변환
     const coordinateToPixel = (lat: number, lng: number) => {
       // 지구 전체를 기준으로 한 정규화된 좌표 계산
-      const x = ((lng + 180) / 360) * (width - 32); // 좌우 여백 16px씩
-      const y = ((90 - lat) / 180) * 200; // 지도 높이 200px 기준
+      const mapWidth = width - 32; // 좌우 패딩 16px씩
+      const mapHeight = 250; // 지도 높이 250px 기준
+      const x = ((lng + 180) / 360) * mapWidth;
+      const y = ((90 - lat) / 180) * mapHeight;
       return { x, y };
     };
 
@@ -198,9 +202,9 @@ const RouteScreen: React.FC = () => {
             style={[
               styles.routeLine,
               {
-                left: segment.left,
-                top: segment.top,
-                width: segment.width,
+                left: Math.max(0, Math.min(segment.left, width - 32)),
+                top: Math.max(0, Math.min(segment.top, 250)),
+                width: Math.min(segment.width, width - 32 - segment.left),
                 transform: [{ rotate: `${segment.angle}deg` }],
               },
             ]}
@@ -222,8 +226,11 @@ const RouteScreen: React.FC = () => {
               style={[
                 styles.marker,
                 {
-                  left: pixelPosition.x - 10,
-                  top: pixelPosition.y - 10,
+                  left: Math.max(
+                    0,
+                    Math.min(pixelPosition.x - 10, width - 32 - 20)
+                  ),
+                  top: Math.max(0, Math.min(pixelPosition.y - 10, 250 - 20)),
                   backgroundColor: isStart
                     ? "#4CAF50"
                     : isEnd
@@ -243,7 +250,8 @@ const RouteScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="rgb(14, 25, 40)" />
       <View style={styles.header}>
         <Text style={styles.headerTitle}>항해 경로 추천</Text>
         <Text style={styles.headerSubtitle}>안전한 항로를 찾아드립니다</Text>
@@ -386,7 +394,7 @@ const RouteScreen: React.FC = () => {
           전문가의 검토가 필요합니다.
         </Text>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -589,12 +597,12 @@ const styles = StyleSheet.create({
   },
   map: {
     width: "100%",
-    height: 200,
+    height: 250,
     borderRadius: 8,
   },
   mapPlaceholder: {
     width: "100%",
-    height: 200,
+    height: 250,
     borderRadius: 8,
     backgroundColor: "rgba(0, 0, 0, 0.3)",
     justifyContent: "center",
@@ -617,15 +625,17 @@ const styles = StyleSheet.create({
   },
   imageMapContainer: {
     width: "100%",
-    height: 200,
+    height: 700,
     borderRadius: 8,
     position: "relative",
     overflow: "hidden",
+    backgroundColor: "rgba(0, 0, 0, 0.1)",
   },
   earthImage: {
     width: "100%",
     height: "100%",
     borderRadius: 8,
+    resizeMode: "contain",
   },
   marker: {
     position: "absolute",
@@ -683,4 +693,3 @@ const styles = StyleSheet.create({
   },
 });
 export default RouteScreen;
-

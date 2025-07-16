@@ -5,9 +5,14 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  SafeAreaView,
+  StatusBar,
 } from "react-native";
 import { GeoPoint } from "../models/types";
-import { WeatherResponse, CurrentWeatherResponse } from "../models/WeatherTypes";
+import {
+  WeatherResponse,
+  CurrentWeatherResponse,
+} from "../models/WeatherTypes";
 import { WeatherApi } from "../services/api/WeatherApi";
 import { getLocation } from "../services/LocationService";
 import { getWindDirectionText, getTemperatureColor } from "../utils/GeoUtils";
@@ -26,8 +31,11 @@ interface WeatherScreenProps {
  */
 const WeatherScreen: React.FC<WeatherScreenProps> = ({ route }) => {
   const [currentLocation, setCurrentLocation] = useState<GeoPoint | null>(null);
-  const [currentWeather, setCurrentWeather] = useState<CurrentWeatherResponse | null>(null);
-  const [forecastData, setForecastData] = useState<WeatherResponse | null>(null);
+  const [currentWeather, setCurrentWeather] =
+    useState<CurrentWeatherResponse | null>(null);
+  const [forecastData, setForecastData] = useState<WeatherResponse | null>(
+    null
+  );
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,182 +99,195 @@ const WeatherScreen: React.FC<WeatherScreenProps> = ({ route }) => {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
+        <StatusBar barStyle="light-content" backgroundColor="rgb(14, 25, 40)" />
         <ActivityIndicator size="large" color="#4A90E2" />
         <Text style={styles.loadingText}>날씨 정보를 불러오는 중...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.errorContainer}>
+      <SafeAreaView style={styles.errorContainer}>
+        <StatusBar barStyle="light-content" backgroundColor="rgb(14, 25, 40)" />
         <Feather name="alert-triangle" size={50} color="#FF6B6B" />
         <Text style={styles.errorText}>{error}</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!currentWeather || !forecastData) return null;
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-    >
-      {/* 현재 위치 헤더 */}
-      <View style={styles.locationHeader}>
-        <Text style={styles.locationText}>
-          {currentWeather.name}, {currentWeather.sys.country}
-        </Text>
-        <Text style={styles.updateTime}>
-          업데이트: {new Date(currentWeather.dt * 1000).toLocaleTimeString()}
-        </Text>
-      </View>
-
-      {/* 현재 날씨 정보 */}
-      <View style={styles.currentWeatherContainer}>
-        <View style={styles.currentWeatherHeader}>
-          <Feather
-            name={getWeatherIcon(currentWeather.weather[0].main.toLowerCase())}
-            size={80}
-            color="#FFF"
-          />
-          <Text style={styles.temperatureText}>
-            {currentWeather.main.temp.toFixed(1)}°C
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="rgb(14, 25, 40)" />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+      >
+        {/* 현재 위치 헤더 */}
+        <View style={styles.locationHeader}>
+          <Text style={styles.locationText}>
+            {currentWeather.name}, {currentWeather.sys.country}
           </Text>
-          <Text style={styles.weatherDescription}>
-            {currentWeather.weather[0].description}
+          <Text style={styles.updateTime}>
+            업데이트: {new Date(currentWeather.dt * 1000).toLocaleTimeString()}
           </Text>
         </View>
 
-        <View style={styles.weatherDetailsGrid}>
-          <View style={styles.weatherDetail}>
-            <Feather name="wind" size={24} color="#BBDEFB" />
-            <Text style={styles.weatherDetailTitle}>풍속</Text>
-            <Text style={styles.weatherDetailValue}>
-              {currentWeather.wind.speed} m/s
-            </Text>
-          </View>
-
-          <View style={styles.weatherDetail}>
-            <Feather name="compass" size={24} color="#BBDEFB" />
-            <Text style={styles.weatherDetailTitle}>풍향</Text>
-            <Text style={styles.weatherDetailValue}>
-              {getWindDirectionText(currentWeather.wind.deg)}
-            </Text>
-          </View>
-
-          <View style={styles.weatherDetail}>
-            <Feather name="cloud" size={24} color="#BBDEFB" />
-            <Text style={styles.weatherDetailTitle}>구름</Text>
-            <Text style={styles.weatherDetailValue}>
-              {currentWeather.clouds.all}%
-            </Text>
-          </View>
-
-          <View style={styles.weatherDetail}>
-            <Feather name="droplet" size={24} color="#BBDEFB" />
-            <Text style={styles.weatherDetailTitle}>습도</Text>
-            <Text style={styles.weatherDetailValue}>
-              {currentWeather.main.humidity}%
-            </Text>
-          </View>
-
-          <View style={styles.weatherDetail}>
-            <Feather name="activity" size={24} color="#BBDEFB" />
-            <Text style={styles.weatherDetailTitle}>기압</Text>
-            <Text style={styles.weatherDetailValue}>
-              {currentWeather.main.pressure} hPa
-            </Text>
-          </View>
-
-          <View style={styles.weatherDetail}>
-            <Feather name="sun" size={24} color="#BBDEFB" />
-            <Text style={styles.weatherDetailTitle}>일출/일몰</Text>
-            <Text style={styles.weatherDetailValue}>
-              {new Date(currentWeather.sys.sunrise * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              {' / '}
-              {new Date(currentWeather.sys.sunset * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* 일기 예보 */}
-      <View style={styles.forecastContainer}>
-        <Text style={styles.sectionTitle}>일기 예보</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {forecastData.list.slice(1, 9).map((item, index) => (
-            <View key={index} style={styles.forecastItem}>
-              <Text style={styles.forecastTime}>
-                {new Date(item.dt * 1000).getHours()}:00
-              </Text>
-              <Feather
-                name={getWeatherIcon(item.weather[0].main.toLowerCase())}
-                size={30}
-                color="#FFF"
-              />
-              <Text
-                style={[
-                  styles.forecastTemp,
-                  { color: getTemperatureColor(item.main.temp) },
-                ]}
-              >
-                {item.main.temp.toFixed(1)}°C
-              </Text>
-              <View style={styles.forecastWind}>
-                <Feather name="wind" size={16} color="#BBDEFB" />
-                <Text style={styles.forecastWindText}>
-                  {item.wind.speed} m/s
-                </Text>
-              </View>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* 해양 정보 */}
-      <View style={styles.marineInfoContainer}>
-        <Text style={styles.sectionTitle}>해양 정보</Text>
-
-        <View style={styles.marineInfoItem}>
-          <Text style={styles.marineInfoTitle}>파고</Text>
-          <Text style={styles.marineInfoValue}>1.2 m</Text>
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBar, { width: "30%" }]} />
-          </View>
-        </View>
-
-        <View style={styles.marineInfoItem}>
-          <Text style={styles.marineInfoTitle}>조류 속도</Text>
-          <Text style={styles.marineInfoValue}>0.5 knots</Text>
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBar, { width: "15%" }]} />
-          </View>
-        </View>
-
-        <View style={styles.marineInfoItem}>
-          <Text style={styles.marineInfoTitle}>해수 온도</Text>
-          <Text style={styles.marineInfoValue}>18.5°C</Text>
-          <View style={styles.progressBarContainer}>
-            <View
-              style={[
-                styles.progressBar,
-                { width: "50%", backgroundColor: "#4FC3F7" },
-              ]}
+        {/* 현재 날씨 정보 */}
+        <View style={styles.currentWeatherContainer}>
+          <View style={styles.currentWeatherHeader}>
+            <Feather
+              name={getWeatherIcon(
+                currentWeather.weather[0].main.toLowerCase()
+              )}
+              size={80}
+              color="#FFF"
             />
+            <Text style={styles.temperatureText}>
+              {currentWeather.main.temp.toFixed(1)}°C
+            </Text>
+            <Text style={styles.weatherDescription}>
+              {currentWeather.weather[0].description}
+            </Text>
+          </View>
+
+          <View style={styles.weatherDetailsGrid}>
+            <View style={styles.weatherDetail}>
+              <Feather name="wind" size={24} color="#BBDEFB" />
+              <Text style={styles.weatherDetailTitle}>풍속</Text>
+              <Text style={styles.weatherDetailValue}>
+                {currentWeather.wind.speed} m/s
+              </Text>
+            </View>
+
+            <View style={styles.weatherDetail}>
+              <Feather name="compass" size={24} color="#BBDEFB" />
+              <Text style={styles.weatherDetailTitle}>풍향</Text>
+              <Text style={styles.weatherDetailValue}>
+                {getWindDirectionText(currentWeather.wind.deg)}
+              </Text>
+            </View>
+
+            <View style={styles.weatherDetail}>
+              <Feather name="cloud" size={24} color="#BBDEFB" />
+              <Text style={styles.weatherDetailTitle}>구름</Text>
+              <Text style={styles.weatherDetailValue}>
+                {currentWeather.clouds.all}%
+              </Text>
+            </View>
+
+            <View style={styles.weatherDetail}>
+              <Feather name="droplet" size={24} color="#BBDEFB" />
+              <Text style={styles.weatherDetailTitle}>습도</Text>
+              <Text style={styles.weatherDetailValue}>
+                {currentWeather.main.humidity}%
+              </Text>
+            </View>
+
+            <View style={styles.weatherDetail}>
+              <Feather name="activity" size={24} color="#BBDEFB" />
+              <Text style={styles.weatherDetailTitle}>기압</Text>
+              <Text style={styles.weatherDetailValue}>
+                {currentWeather.main.pressure} hPa
+              </Text>
+            </View>
+
+            <View style={styles.weatherDetail}>
+              <Feather name="sun" size={24} color="#BBDEFB" />
+              <Text style={styles.weatherDetailTitle}>일출/일몰</Text>
+              <Text style={styles.weatherDetailValue}>
+                {new Date(currentWeather.sys.sunrise * 1000).toLocaleTimeString(
+                  [],
+                  { hour: "2-digit", minute: "2-digit" }
+                )}
+                {" / "}
+                {new Date(currentWeather.sys.sunset * 1000).toLocaleTimeString(
+                  [],
+                  { hour: "2-digit", minute: "2-digit" }
+                )}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      <View style={styles.disclaimer}>
-        <Feather name="info" size={16} color="#BBDEFB" />
-        <Text style={styles.disclaimerText}>
-          해양 정보는 예시이며, 실제 데이터와 다를 수 있습니다.
-        </Text>
-      </View>
-    </ScrollView>
+        {/* 일기 예보 */}
+        <View style={styles.forecastContainer}>
+          <Text style={styles.sectionTitle}>일기 예보</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {forecastData.list.slice(1, 9).map((item, index) => (
+              <View key={index} style={styles.forecastItem}>
+                <Text style={styles.forecastTime}>
+                  {new Date(item.dt * 1000).getHours()}:00
+                </Text>
+                <Feather
+                  name={getWeatherIcon(item.weather[0].main.toLowerCase())}
+                  size={30}
+                  color="#FFF"
+                />
+                <Text
+                  style={[
+                    styles.forecastTemp,
+                    { color: getTemperatureColor(item.main.temp) },
+                  ]}
+                >
+                  {item.main.temp.toFixed(1)}°C
+                </Text>
+                <View style={styles.forecastWind}>
+                  <Feather name="wind" size={16} color="#BBDEFB" />
+                  <Text style={styles.forecastWindText}>
+                    {item.wind.speed} m/s
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* 해양 정보 */}
+        <View style={styles.marineInfoContainer}>
+          <Text style={styles.sectionTitle}>해양 정보</Text>
+
+          <View style={styles.marineInfoItem}>
+            <Text style={styles.marineInfoTitle}>파고</Text>
+            <Text style={styles.marineInfoValue}>1.2 m</Text>
+            <View style={styles.progressBarContainer}>
+              <View style={[styles.progressBar, { width: "30%" }]} />
+            </View>
+          </View>
+
+          <View style={styles.marineInfoItem}>
+            <Text style={styles.marineInfoTitle}>조류 속도</Text>
+            <Text style={styles.marineInfoValue}>0.5 knots</Text>
+            <View style={styles.progressBarContainer}>
+              <View style={[styles.progressBar, { width: "15%" }]} />
+            </View>
+          </View>
+
+          <View style={styles.marineInfoItem}>
+            <Text style={styles.marineInfoTitle}>해수 온도</Text>
+            <Text style={styles.marineInfoValue}>18.5°C</Text>
+            <View style={styles.progressBarContainer}>
+              <View
+                style={[
+                  styles.progressBar,
+                  { width: "50%", backgroundColor: "#4FC3F7" },
+                ]}
+              />
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.disclaimer}>
+          <Feather name="info" size={16} color="#BBDEFB" />
+          <Text style={styles.disclaimerText}>
+            해양 정보는 예시이며, 실제 데이터와 다를 수 있습니다.
+          </Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 

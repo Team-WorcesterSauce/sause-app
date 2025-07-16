@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   ScrollView,
   RefreshControl,
+  SafeAreaView,
+  StatusBar,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { DisasterPrediction, GeoPoint } from "../models/types";
@@ -35,7 +37,9 @@ const WarningScreen: React.FC = () => {
       setCurrentLocation(location);
 
       // 재난 예측 정보 가져오기
-      const predictionData = await DisasterService.getDisasterPrediction(location);
+      const predictionData = await DisasterService.getDisasterPrediction(
+        location
+      );
       setPrediction(predictionData);
     } catch (err) {
       console.error("재난 예측 정보 로드 오류:", err);
@@ -92,108 +96,135 @@ const WarningScreen: React.FC = () => {
   // 로딩 상태
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
+        <StatusBar barStyle="light-content" backgroundColor="rgb(14, 25, 40)" />
         <ActivityIndicator size="large" color="#1976D2" />
         <Text style={styles.loadingText}>재난 예측 정보를 불러오는 중...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   // 에러 상태
   if (error) {
     return (
-      <View style={styles.errorContainer}>
+      <SafeAreaView style={styles.errorContainer}>
+        <StatusBar barStyle="light-content" backgroundColor="rgb(14, 25, 40)" />
         <Feather name="alert-circle" size={48} color="#F44336" />
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadDisasterPrediction}>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={loadDisasterPrediction}
+        >
           <Text style={styles.retryButtonText}>다시 시도</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-      }
-    >
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>재난 경고</Text>
-        <Text style={styles.headerSubtitle}>현재 위치의 재난 위험도를 확인하세요</Text>
-      </View>
-
-      {currentLocation && (
-        <View style={styles.locationInfo}>
-          <Feather name="map-pin" size={16} color="#BBDEFB" />
-          <Text style={styles.locationText}>
-            현재 위치: {currentLocation.latitude.toFixed(4)}, {currentLocation.longitude.toFixed(4)}
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="rgb(14, 25, 40)" />
+      <ScrollView
+        style={styles.container}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
+      >
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>재난 경고</Text>
+          <Text style={styles.headerSubtitle}>
+            현재 위치의 재난 위험도를 확인하세요
           </Text>
         </View>
-      )}
 
-      {prediction && (
-        <View style={styles.predictionContainer}>
-          <View style={styles.predictionHeader}>
-            <View style={[
-              styles.predictionIcon,
-              { backgroundColor: getPredictionColor(prediction.prediction) }
-            ]}>
-              <Feather 
-                name={getPredictionIcon(prediction.prediction)} 
-                size={32} 
-                color="#FFFFFF" 
-              />
+        {currentLocation && (
+          <View style={styles.locationInfo}>
+            <Feather name="map-pin" size={16} color="#BBDEFB" />
+            <Text style={styles.locationText}>
+              현재 위치: {currentLocation.latitude.toFixed(4)},{" "}
+              {currentLocation.longitude.toFixed(4)}
+            </Text>
+          </View>
+        )}
+
+        {prediction && (
+          <View style={styles.predictionContainer}>
+            <View style={styles.predictionHeader}>
+              <View
+                style={[
+                  styles.predictionIcon,
+                  {
+                    backgroundColor: getPredictionColor(prediction.prediction),
+                  },
+                ]}
+              >
+                <Feather
+                  name={getPredictionIcon(prediction.prediction)}
+                  size={32}
+                  color="#FFFFFF"
+                />
+              </View>
+              <View style={styles.predictionInfo}>
+                <Text style={styles.predictionTitle}>현재 상태</Text>
+                <Text
+                  style={[
+                    styles.predictionLevel,
+                    { color: getPredictionColor(prediction.prediction) },
+                  ]}
+                >
+                  {prediction.prediction}
+                </Text>
+              </View>
             </View>
-            <View style={styles.predictionInfo}>
-              <Text style={styles.predictionTitle}>현재 상태</Text>
-              <Text style={[
-                styles.predictionLevel,
-                { color: getPredictionColor(prediction.prediction) }
-              ]}>
-                {prediction.prediction}
-              </Text>
+
+            <View style={styles.messageContainer}>
+              <Text style={styles.messageTitle}>상세 정보</Text>
+              <Text style={styles.messageText}>{prediction.message}</Text>
+            </View>
+
+            <View style={styles.actionContainer}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={handleRefresh}
+              >
+                <Feather name="refresh-cw" size={20} color="#FFFFFF" />
+                <Text style={styles.actionButtonText}>새로고침</Text>
+              </TouchableOpacity>
             </View>
           </View>
+        )}
 
-          <View style={styles.messageContainer}>
-            <Text style={styles.messageTitle}>상세 정보</Text>
-            <Text style={styles.messageText}>{prediction.message}</Text>
+        <View style={styles.safetyTips}>
+          <Text style={styles.safetyTipsTitle}>안전 수칙</Text>
+          <View style={styles.safetyTip}>
+            <Feather name="check" size={16} color="#4CAF50" />
+            <Text style={styles.safetyTipText}>
+              기상 정보를 정기적으로 확인하세요
+            </Text>
           </View>
-
-          <View style={styles.actionContainer}>
-            <TouchableOpacity style={styles.actionButton} onPress={handleRefresh}>
-              <Feather name="refresh-cw" size={20} color="#FFFFFF" />
-              <Text style={styles.actionButtonText}>새로고침</Text>
-            </TouchableOpacity>
+          <View style={styles.safetyTip}>
+            <Feather name="check" size={16} color="#4CAF50" />
+            <Text style={styles.safetyTipText}>
+              안전 장비를 항상 점검하세요
+            </Text>
+          </View>
+          <View style={styles.safetyTip}>
+            <Feather name="check" size={16} color="#4CAF50" />
+            <Text style={styles.safetyTipText}>
+              위험 징후 발견 시 즉시 대피하세요
+            </Text>
           </View>
         </View>
-      )}
 
-      <View style={styles.safetyTips}>
-        <Text style={styles.safetyTipsTitle}>안전 수칙</Text>
-        <View style={styles.safetyTip}>
-          <Feather name="check" size={16} color="#4CAF50" />
-          <Text style={styles.safetyTipText}>기상 정보를 정기적으로 확인하세요</Text>
+        <View style={styles.disclaimer}>
+          <Feather name="info" size={16} color="#BBDEFB" />
+          <Text style={styles.disclaimerText}>
+            재난 예측 정보는 참고용이며, 실제 항해 시에는 전문가의 조언을
+            구하시기 바랍니다.
+          </Text>
         </View>
-        <View style={styles.safetyTip}>
-          <Feather name="check" size={16} color="#4CAF50" />
-          <Text style={styles.safetyTipText}>안전 장비를 항상 점검하세요</Text>
-        </View>
-        <View style={styles.safetyTip}>
-          <Feather name="check" size={16} color="#4CAF50" />
-          <Text style={styles.safetyTipText}>위험 징후 발견 시 즉시 대피하세요</Text>
-        </View>
-      </View>
-
-      <View style={styles.disclaimer}>
-        <Feather name="info" size={16} color="#BBDEFB" />
-        <Text style={styles.disclaimerText}>
-          재난 예측 정보는 참고용이며, 실제 항해 시에는 전문가의 조언을 구하시기 바랍니다.
-        </Text>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 

@@ -37,7 +37,7 @@ const HomeScreen = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="rgb(14, 25, 40)" />
       <View style={styles.header}>
-        <Text style={styles.title}>SeaNavigator</Text>
+        <Text style={styles.title}>해네비</Text>
         <Text style={styles.subtitle}>항해용 기상 예측 및 경고 시스템</Text>
       </View>
 
