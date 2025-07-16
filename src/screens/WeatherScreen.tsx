@@ -5,10 +5,10 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  Image,
 } from "react-native";
-import { WeatherData, GeoPoint } from "../models/types";
-import { WeatherService } from "../services/WeatherService";
+import { GeoPoint } from "../models/types";
+import { WeatherResponse, CurrentWeatherResponse } from "../models/WeatherTypes";
+import { WeatherApi } from "../services/api/WeatherApi";
 import { getLocation } from "../services/LocationService";
 import { getWindDirectionText, getTemperatureColor } from "../utils/GeoUtils";
 import { Feather } from "@expo/vector-icons";
@@ -26,8 +26,8 @@ interface WeatherScreenProps {
  */
 const WeatherScreen: React.FC<WeatherScreenProps> = ({ route }) => {
   const [currentLocation, setCurrentLocation] = useState<GeoPoint | null>(null);
-  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
-  const [forecast, setForecast] = useState<WeatherData[] | null>(null);
+  const [currentWeather, setCurrentWeather] = useState<CurrentWeatherResponse | null>(null);
+  const [forecastData, setForecastData] = useState<WeatherResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,13 +49,14 @@ const WeatherScreen: React.FC<WeatherScreenProps> = ({ route }) => {
 
         setCurrentLocation(location);
 
-        // 2. 현재 날씨 데이터 가져오기
-        const weather = await WeatherService.getCurrentWeather(location);
-        setWeatherData(weather);
+        // 2. 현재 날씨와 예보 데이터 가져오기
+        const [current, forecast] = await Promise.all([
+          WeatherApi.getCurrentWeather(location.latitude, location.longitude),
+          WeatherApi.getForecast(location.latitude, location.longitude),
+        ]);
 
-        // 3. 예보 데이터 가져오기
-        const forecastData = await WeatherService.getForecast(location);
-        setForecast(forecastData);
+        setCurrentWeather(current);
+        setForecastData(forecast);
       } catch (err) {
         console.error("날씨 정보 로드 오류:", err);
         setError(
@@ -76,10 +77,13 @@ const WeatherScreen: React.FC<WeatherScreenProps> = ({ route }) => {
         return "cloud-rain";
       case "snow":
         return "cloud-snow";
-      case "hail":
+      case "thunderstorm":
+      case "drizzle":
         return "cloud-drizzle";
-      case "none":
+      case "clear":
         return "sun";
+      case "clouds":
+        return "cloud";
       default:
         return "cloud";
     }
@@ -103,6 +107,8 @@ const WeatherScreen: React.FC<WeatherScreenProps> = ({ route }) => {
     );
   }
 
+  if (!currentWeather || !forecastData) return null;
+
   return (
     <ScrollView
       style={styles.container}
@@ -111,115 +117,114 @@ const WeatherScreen: React.FC<WeatherScreenProps> = ({ route }) => {
       {/* 현재 위치 헤더 */}
       <View style={styles.locationHeader}>
         <Text style={styles.locationText}>
-          현재 위치: {currentLocation?.latitude.toFixed(4)}°N,{" "}
-          {currentLocation?.longitude.toFixed(4)}°E
+          {currentWeather.name}, {currentWeather.sys.country}
         </Text>
         <Text style={styles.updateTime}>
-          {weatherData &&
-            `업데이트: ${weatherData.timestamp.toLocaleTimeString()}`}
+          업데이트: {new Date(currentWeather.dt * 1000).toLocaleTimeString()}
         </Text>
       </View>
 
       {/* 현재 날씨 정보 */}
-      {weatherData && (
-        <View style={styles.currentWeatherContainer}>
-          <View style={styles.currentWeatherHeader}>
-            <Feather
-              name={getWeatherIcon(weatherData.precipitationType)}
-              size={80}
-              color="#FFF"
-            />
-            <Text style={styles.temperatureText}>
-              {weatherData.temperature.toFixed(1)}°C
+      <View style={styles.currentWeatherContainer}>
+        <View style={styles.currentWeatherHeader}>
+          <Feather
+            name={getWeatherIcon(currentWeather.weather[0].main.toLowerCase())}
+            size={80}
+            color="#FFF"
+          />
+          <Text style={styles.temperatureText}>
+            {currentWeather.main.temp.toFixed(1)}°C
+          </Text>
+          <Text style={styles.weatherDescription}>
+            {currentWeather.weather[0].description}
+          </Text>
+        </View>
+
+        <View style={styles.weatherDetailsGrid}>
+          <View style={styles.weatherDetail}>
+            <Feather name="wind" size={24} color="#BBDEFB" />
+            <Text style={styles.weatherDetailTitle}>풍속</Text>
+            <Text style={styles.weatherDetailValue}>
+              {currentWeather.wind.speed} m/s
             </Text>
           </View>
 
-          <View style={styles.weatherDetailsGrid}>
-            <View style={styles.weatherDetail}>
-              <Feather name="wind" size={24} color="#BBDEFB" />
-              <Text style={styles.weatherDetailTitle}>풍속</Text>
-              <Text style={styles.weatherDetailValue}>
-                {weatherData.windSpeed} m/s
-              </Text>
-            </View>
+          <View style={styles.weatherDetail}>
+            <Feather name="compass" size={24} color="#BBDEFB" />
+            <Text style={styles.weatherDetailTitle}>풍향</Text>
+            <Text style={styles.weatherDetailValue}>
+              {getWindDirectionText(currentWeather.wind.deg)}
+            </Text>
+          </View>
 
-            <View style={styles.weatherDetail}>
-              <Feather name="compass" size={24} color="#BBDEFB" />
-              <Text style={styles.weatherDetailTitle}>풍향</Text>
-              <Text style={styles.weatherDetailValue}>
-                {getWindDirectionText(weatherData.windDirection)}
-              </Text>
-            </View>
+          <View style={styles.weatherDetail}>
+            <Feather name="cloud" size={24} color="#BBDEFB" />
+            <Text style={styles.weatherDetailTitle}>구름</Text>
+            <Text style={styles.weatherDetailValue}>
+              {currentWeather.clouds.all}%
+            </Text>
+          </View>
 
-            <View style={styles.weatherDetail}>
-              <Feather name="cloud" size={24} color="#BBDEFB" />
-              <Text style={styles.weatherDetailTitle}>구름</Text>
-              <Text style={styles.weatherDetailValue}>
-                {weatherData.cloudDensity}%
-              </Text>
-            </View>
+          <View style={styles.weatherDetail}>
+            <Feather name="droplet" size={24} color="#BBDEFB" />
+            <Text style={styles.weatherDetailTitle}>습도</Text>
+            <Text style={styles.weatherDetailValue}>
+              {currentWeather.main.humidity}%
+            </Text>
+          </View>
 
-            <View style={styles.weatherDetail}>
-              <Feather name="droplet" size={24} color="#BBDEFB" />
-              <Text style={styles.weatherDetailTitle}>습도</Text>
-              <Text style={styles.weatherDetailValue}>
-                {weatherData.humidity}%
-              </Text>
-            </View>
+          <View style={styles.weatherDetail}>
+            <Feather name="activity" size={24} color="#BBDEFB" />
+            <Text style={styles.weatherDetailTitle}>기압</Text>
+            <Text style={styles.weatherDetailValue}>
+              {currentWeather.main.pressure} hPa
+            </Text>
+          </View>
 
-            <View style={styles.weatherDetail}>
-              <Feather name="activity" size={24} color="#BBDEFB" />
-              <Text style={styles.weatherDetailTitle}>기압</Text>
-              <Text style={styles.weatherDetailValue}>
-                {weatherData.pressure} hPa
-              </Text>
-            </View>
-
-            <View style={styles.weatherDetail}>
-              <Feather name="eye" size={24} color="#BBDEFB" />
-              <Text style={styles.weatherDetailTitle}>시정</Text>
-              <Text style={styles.weatherDetailValue}>
-                {weatherData.visibility} km
-              </Text>
-            </View>
+          <View style={styles.weatherDetail}>
+            <Feather name="sun" size={24} color="#BBDEFB" />
+            <Text style={styles.weatherDetailTitle}>일출/일몰</Text>
+            <Text style={styles.weatherDetailValue}>
+              {new Date(currentWeather.sys.sunrise * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {' / '}
+              {new Date(currentWeather.sys.sunset * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
           </View>
         </View>
-      )}
+      </View>
 
       {/* 일기 예보 */}
-      {forecast && forecast.length > 0 && (
-        <View style={styles.forecastContainer}>
-          <Text style={styles.sectionTitle}>일기 예보</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {forecast.slice(0, 8).map((item, index) => (
-              <View key={index} style={styles.forecastItem}>
-                <Text style={styles.forecastTime}>
-                  {new Date(item.timestamp).getHours()}:00
+      <View style={styles.forecastContainer}>
+        <Text style={styles.sectionTitle}>일기 예보</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {forecastData.list.slice(1, 9).map((item, index) => (
+            <View key={index} style={styles.forecastItem}>
+              <Text style={styles.forecastTime}>
+                {new Date(item.dt * 1000).getHours()}:00
+              </Text>
+              <Feather
+                name={getWeatherIcon(item.weather[0].main.toLowerCase())}
+                size={30}
+                color="#FFF"
+              />
+              <Text
+                style={[
+                  styles.forecastTemp,
+                  { color: getTemperatureColor(item.main.temp) },
+                ]}
+              >
+                {item.main.temp.toFixed(1)}°C
+              </Text>
+              <View style={styles.forecastWind}>
+                <Feather name="wind" size={16} color="#BBDEFB" />
+                <Text style={styles.forecastWindText}>
+                  {item.wind.speed} m/s
                 </Text>
-                <Feather
-                  name={getWeatherIcon(item.precipitationType)}
-                  size={30}
-                  color="#FFF"
-                />
-                <Text
-                  style={[
-                    styles.forecastTemp,
-                    { color: getTemperatureColor(item.temperature) },
-                  ]}
-                >
-                  {item.temperature.toFixed(1)}°C
-                </Text>
-                <View style={styles.forecastWind}>
-                  <Feather name="wind" size={16} color="#BBDEFB" />
-                  <Text style={styles.forecastWindText}>
-                    {item.windSpeed} m/s
-                  </Text>
-                </View>
               </View>
-            ))}
-          </ScrollView>
-        </View>
-      )}
+            </View>
+          ))}
+        </ScrollView>
+      </View>
 
       {/* 해양 정보 */}
       <View style={styles.marineInfoContainer}>
@@ -317,15 +322,21 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   currentWeatherHeader: {
-    flexDirection: "row",
+    flexDirection: "column", // Changed to column for better layout
     alignItems: "center",
-    justifyContent: "space-around",
+    justifyContent: "center",
     marginBottom: 16,
   },
   temperatureText: {
     fontSize: 60,
     fontWeight: "bold",
     color: "#FFF",
+    marginBottom: 8,
+  },
+  weatherDescription: {
+    fontSize: 16,
+    color: "#BBDEFB",
+    textAlign: "center",
   },
   weatherDetailsGrid: {
     flexDirection: "row",
