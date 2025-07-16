@@ -8,6 +8,7 @@ import HomeScreen from "../screens/HomeScreen";
 import WeatherScreen from "../screens/WeatherScreen";
 import RouteScreen from "../screens/RouteScreen";
 import WarningScreen from "../screens/WarningScreen";
+import DisasterScreen from '../screens/DisasterScreen';
 
 // Navigation parameter types
 export type RootStackParamList = {
@@ -69,6 +70,20 @@ const AppNavigator = () => {
           name="MainTabs"
           component={MainTabNavigator}
           options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="Disaster"
+          component={DisasterScreen}
+          options={{
+            title: '재난 정보',
+            headerStyle: {
+              backgroundColor: '#4A90E2',
+            },
+            headerTintColor: '#fff',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+            },
+          }}
         />
         {/* Add more stack screens as needed for detail views */}
       </Stack.Navigator>

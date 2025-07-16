@@ -6,6 +6,8 @@ import { OrbitControls } from "@react-three/drei/native";
 import { Asset } from "expo-asset";
 import { GeoPoint } from "../models/types";
 import SimpleGlobe from "./SimpleGlobe";
+import { EarthApi } from "../services/api/EarthApi";
+import { EventLocation } from "../models/EarthTypes";
 
 // 범례 컴포넌트
 const Legend: React.FC = () => {
@@ -94,6 +96,27 @@ const Globe3D: React.FC<Globe3DProps> = ({
   currentLocation,
   weatherPoints,
 }) => {
+  const [visualizationData, setVisualizationData] = useState<EventLocation[]>([]);
+
+  // 시각화 데이터 로드
+  useEffect(() => {
+    const loadVisualizationData = async () => {
+      if (currentLocation) {
+        try {
+          const response = await EarthApi.getVisualizationData(
+            currentLocation.latitude,
+            currentLocation.longitude
+          );
+          setVisualizationData(response.eventLocations);
+        } catch (error) {
+          console.error("시각화 데이터 로드 실패:", error);
+        }
+      }
+    };
+
+    loadVisualizationData();
+  }, [currentLocation]);
+
   return (
     <ErrorBoundary
       fallback={
@@ -123,6 +146,7 @@ const Globe3D: React.FC<Globe3DProps> = ({
               position={[0, 0, 0]}
               currentLocation={currentLocation}
               weatherPoints={weatherPoints}
+              visualizationPoints={visualizationData}
             />
             <OrbitControls
               enableZoom={true}
@@ -153,6 +177,7 @@ interface EarthProps {
     location: GeoPoint;
     type: "rain" | "snow" | "hail" | "clear" | "cloud";
   }>;
+  visualizationPoints?: EventLocation[];
 }
 
 /**
@@ -162,6 +187,7 @@ const Earth: React.FC<EarthProps> = ({
   position,
   currentLocation,
   weatherPoints,
+  visualizationPoints,
 }) => {
   // 텍스처 상태 관리
   const [earthTexture, setEarthTexture] = useState<THREE.Texture | null>(null);
@@ -229,6 +255,18 @@ const Earth: React.FC<EarthProps> = ({
     }
   };
 
+  // 시각화 포인트 렌더링
+  const renderVisualizationPoints = () => {
+    return visualizationPoints?.map((point, index) => (
+      <LocationMarker
+        key={`viz-${index}`}
+        location={{ latitude: point.lat, longitude: point.lon }}
+        color="#00ff00"
+        size={0.1}
+      />
+    ));
+  };
+
   return (
     <group position={position}>
       {/* 텍스처 로딩 중일 때는 렌더링하지 않음 */}
@@ -251,7 +289,7 @@ const Earth: React.FC<EarthProps> = ({
               <LocationMarker
                 location={currentLocation}
                 color="#ff0000"
-                size={0.1}
+                size={0.15}
               />
             )}
 
@@ -259,12 +297,15 @@ const Earth: React.FC<EarthProps> = ({
             {weatherPoints &&
               weatherPoints.map((point, index) => (
                 <LocationMarker
-                  key={index}
+                  key={`weather-${index}`}
                   location={point.location}
                   color={getWeatherPointColor(point.type)}
-                  size={0.06}
+                  size={0.1}
                 />
               ))}
+
+            {/* 시각화 포인트 표시 */}
+            {renderVisualizationPoints()}
           </mesh>
 
           {/* 구름층 */}
