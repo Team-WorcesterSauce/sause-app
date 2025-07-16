@@ -4,8 +4,7 @@ import { GeoPoint, RouteRecommendation } from "../models/types";
  * Service for handling route recommendations and navigation
  */
 export class NavigationService {
-  private static readonly API_BASE_URL =
-    process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
+  private static readonly API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
 
   /**
    * Generates a recommended route based on start and end points
@@ -15,20 +14,20 @@ export class NavigationService {
     endPoint: GeoPoint
   ): Promise<RouteRecommendation> {
     try {
-      const params = new URLSearchParams({
+      const params = {
         startLat: Number(startPoint.latitude).toFixed(4),
         startLon: Number(startPoint.longitude).toFixed(4),
         endLat: Number(endPoint.latitude).toFixed(4),
         endLon: Number(endPoint.longitude).toFixed(4),
-      });
+      };
 
-      const response = await fetch(`${this.API_BASE_URL}/route?${params}`, {
+      const response = await fetch(`${this.API_BASE_URL}/route`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Access-Control-Allow-Origin": "*",
         },
-        body: params
+        body: JSON.stringify(params)
       });
 
       if (!response.ok) {
