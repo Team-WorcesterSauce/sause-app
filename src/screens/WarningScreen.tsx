@@ -150,7 +150,7 @@ const WarningScreen: React.FC = () => {
         {prediction && (
           <View style={styles.predictionContainer}>
             <View style={styles.predictionHeader}>
-              <View
+              {/* <View
                 style={[
                   styles.predictionIcon,
                   {
@@ -163,7 +163,7 @@ const WarningScreen: React.FC = () => {
                   size={32}
                   color="#FFFFFF"
                 />
-              </View>
+              </View> */}
               <View style={styles.predictionInfo}>
                 <Text style={styles.predictionTitle}>현재 상태</Text>
                 <Text

@@ -149,7 +149,7 @@ const RouteScreen: React.FC = () => {
     const coordinateToPixel = (lat: number, lng: number) => {
       // 지구 전체를 기준으로 한 정규화된 좌표 계산
       const mapWidth = width - 32; // 좌우 패딩 16px씩
-      const mapHeight = 250; // 지도 높이 250px 기준
+      const mapHeight = height * 0.6; // 화면 높이의 60%를 지도 높이로 설정
       const x = ((lng + 180) / 360) * mapWidth;
       const y = ((90 - lat) / 180) * mapHeight;
       return { x, y };
@@ -186,13 +186,19 @@ const RouteScreen: React.FC = () => {
     };
 
     const lineSegments = calculateLineSegments(route.waypoints);
+    const mapHeight = height * 0.6;
 
     return (
-      <View style={styles.imageMapContainer}>
+      <ScrollView 
+        style={styles.imageMapContainer}
+        contentContainerStyle={styles.imageMapContent}
+        showsVerticalScrollIndicator={true}
+        showsHorizontalScrollIndicator={true}
+      >
         <Image
           source={require("../../assets/images/earth-texture.jpg")}
-          style={styles.earthImage}
-          resizeMode="cover"
+          style={[styles.earthImage, { height: mapHeight }]}
+          resizeMode="contain"
         />
 
         {/* 경로 선 표시 */}
@@ -203,7 +209,7 @@ const RouteScreen: React.FC = () => {
               styles.routeLine,
               {
                 left: Math.max(0, Math.min(segment.left, width - 32)),
-                top: Math.max(0, Math.min(segment.top, 250)),
+                top: Math.max(0, Math.min(segment.top, mapHeight)),
                 width: Math.min(segment.width, width - 32 - segment.left),
                 transform: [{ rotate: `${segment.angle}deg` }],
               },
@@ -230,7 +236,7 @@ const RouteScreen: React.FC = () => {
                     0,
                     Math.min(pixelPosition.x - 10, width - 32 - 20)
                   ),
-                  top: Math.max(0, Math.min(pixelPosition.y - 10, 250 - 20)),
+                  top: Math.max(0, Math.min(pixelPosition.y - 10, mapHeight - 20)),
                   backgroundColor: isStart
                     ? "#4CAF50"
                     : isEnd
@@ -245,7 +251,7 @@ const RouteScreen: React.FC = () => {
             </View>
           );
         })}
-      </View>
+      </ScrollView>
     );
   };
 
@@ -597,12 +603,12 @@ const styles = StyleSheet.create({
   },
   map: {
     width: "100%",
-    height: 250,
+    height: Math.min(height * 0.6, 400),
     borderRadius: 8,
   },
   mapPlaceholder: {
     width: "100%",
-    height: 250,
+    height: Math.min(height * 0.6, 400),
     borderRadius: 8,
     backgroundColor: "rgba(0, 0, 0, 0.3)",
     justifyContent: "center",
@@ -625,15 +631,16 @@ const styles = StyleSheet.create({
   },
   imageMapContainer: {
     width: "100%",
-    height: 700,
+    height: Math.min(height * 0.6, 400),
     borderRadius: 8,
-    position: "relative",
-    overflow: "hidden",
     backgroundColor: "rgba(0, 0, 0, 0.1)",
+  },
+  imageMapContent: {
+    position: "relative",
+    minHeight: "100%",
   },
   earthImage: {
     width: "100%",
-    height: "100%",
     borderRadius: 8,
     resizeMode: "contain",
   },
