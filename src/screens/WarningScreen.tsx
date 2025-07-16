@@ -4,27 +4,28 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
   Alert,
   ActivityIndicator,
+  ScrollView,
+  RefreshControl,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { DisasterWarning, GeoPoint } from "../models/types";
-import { WeatherService } from "../services/WeatherService";
+import { DisasterPrediction, GeoPoint } from "../models/types";
+import { DisasterService } from "../services/DisasterService";
 import { getLocation } from "../services/LocationService";
-import { formatDate } from "../utils/GeoUtils";
 
 /**
  * 재난 경고 화면
  */
 const WarningScreen: React.FC = () => {
-  const [warnings, setWarnings] = useState<DisasterWarning[]>([]);
+  const [prediction, setPrediction] = useState<DisasterPrediction | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [currentLocation, setCurrentLocation] = useState<GeoPoint | null>(null);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
-  // 경고 불러오기
-  const loadWarnings = async () => {
+  // 재난 예측 정보 불러오기
+  const loadDisasterPrediction = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -33,206 +34,166 @@ const WarningScreen: React.FC = () => {
       const location = await getLocation();
       setCurrentLocation(location);
 
-      // 재난 경고 가져오기
-      const warningData = await WeatherService.getDisasterWarnings(location);
-      setWarnings(warningData);
+      // 재난 예측 정보 가져오기
+      const predictionData = await DisasterService.getDisasterPrediction(location);
+      setPrediction(predictionData);
     } catch (err) {
-      console.error("재난 경고 로드 오류:", err);
-      setError("재난 경고 정보를 불러오는데 실패했습니다.");
+      console.error("재난 예측 정보 로드 오류:", err);
+      setError("재난 예측 정보를 불러오는데 실패했습니다.");
     } finally {
       setLoading(false);
     }
   };
 
+  // 새로고침 처리
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadDisasterPrediction();
+    setRefreshing(false);
+  };
+
   // 컴포넌트 마운트 시 데이터 로드
   useEffect(() => {
-    loadWarnings();
+    loadDisasterPrediction();
   }, []);
 
-  // 새로고침 처리
-  const handleRefresh = () => {
-    loadWarnings();
-  };
-
-  // 경고 아이콘 선택
-  const getWarningIcon = (type: string) => {
-    switch (type) {
-      case "typhoon":
-        return "wind";
-      case "tornado":
-        return "rotate-cw";
-      case "storm":
-        return "cloud-lightning";
-      default:
-        return "alert-triangle";
-    }
-  };
-
-  // 심각도에 따른 색상
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case "extreme":
-        return "#F44336";
-      case "high":
-        return "#FF9800";
-      case "medium":
-        return "#FFEB3B";
-      case "low":
+  // 예측 결과에 따른 색상
+  const getPredictionColor = (prediction: string) => {
+    switch (prediction) {
+      case "안전":
         return "#4CAF50";
+      case "주의":
+        return "#FFEB3B";
+      case "경고":
+        return "#FF9800";
+      case "위험":
+        return "#F44336";
       default:
         return "#FFFFFF";
     }
   };
 
-  // 심각도 텍스트
-  const getSeverityText = (severity: string) => {
-    switch (severity) {
-      case "extreme":
-        return "극심";
-      case "high":
-        return "높음";
-      case "medium":
-        return "중간";
-      case "low":
-        return "낮음";
+  // 예측 결과에 따른 아이콘
+  const getPredictionIcon = (prediction: string) => {
+    switch (prediction) {
+      case "안전":
+        return "check-circle";
+      case "주의":
+        return "info";
+      case "경고":
+        return "alert-triangle";
+      case "위험":
+        return "alert-circle";
       default:
-        return "알 수 없음";
+        return "help-circle";
     }
   };
 
-  // 경고 상세 정보 보기
-  const viewWarningDetails = (warning: DisasterWarning) => {
-    Alert.alert(
-      `${
-        warning.type === "typhoon"
-          ? "태풍"
-          : warning.type === "tornado"
-          ? "토네이도"
-          : "폭풍"
-      } 경고`,
-      `심각도: ${getSeverityText(
-        warning.severity
-      )}\n예상 도달 시간: ${formatDate(
-        warning.estimatedArrivalTime
-      )}\n예상 강도: ${warning.estimatedIntensity} km/h\n\n안전 지침: ${
-        warning.safetyInstructions
-      }`,
-      [{ text: "확인", style: "default" }]
-    );
-  };
-
+  // 로딩 상태
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4A90E2" />
-        <Text style={styles.loadingText}>경고 정보를 불러오는 중...</Text>
+        <ActivityIndicator size="large" color="#1976D2" />
+        <Text style={styles.loadingText}>재난 예측 정보를 불러오는 중...</Text>
+      </View>
+    );
+  }
+
+  // 에러 상태
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Feather name="alert-circle" size={48} color="#F44336" />
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={loadDisasterPrediction}>
+          <Text style={styles.retryButtonText}>다시 시도</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+      }
+    >
       <View style={styles.header}>
         <Text style={styles.headerTitle}>재난 경고</Text>
-        {currentLocation && (
-          <Text style={styles.locationText}>
-            현재 위치: {currentLocation.latitude.toFixed(4)}°N,{" "}
-            {currentLocation.longitude.toFixed(4)}°E
-          </Text>
-        )}
+        <Text style={styles.headerSubtitle}>현재 위치의 재난 위험도를 확인하세요</Text>
       </View>
 
-      <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
-        <Feather name="refresh-cw" size={16} color="#FFFFFF" />
-        <Text style={styles.refreshText}>새로고침</Text>
-      </TouchableOpacity>
-
-      {error ? (
-        <View style={styles.errorContainer}>
-          <Feather name="alert-circle" size={50} color="#FF6B6B" />
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : warnings.length === 0 ? (
-        <View style={styles.noWarningsContainer}>
-          <Feather name="check-circle" size={50} color="#4CAF50" />
-          <Text style={styles.noWarningsText}>
-            현재 활성화된 경고가 없습니다
+      {currentLocation && (
+        <View style={styles.locationInfo}>
+          <Feather name="map-pin" size={16} color="#BBDEFB" />
+          <Text style={styles.locationText}>
+            현재 위치: {currentLocation.latitude.toFixed(4)}, {currentLocation.longitude.toFixed(4)}
           </Text>
         </View>
-      ) : (
-        <FlatList
-          data={warnings}
-          keyExtractor={(_, index) => index.toString()}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.warningCard}
-              onPress={() => viewWarningDetails(item)}
-            >
-              <View
-                style={[
-                  styles.warningIcon,
-                  { backgroundColor: getSeverityColor(item.severity) },
-                ]}
-              >
-                <Feather
-                  name={getWarningIcon(item.type)}
-                  size={24}
-                  color="#FFFFFF"
-                />
-              </View>
-
-              <View style={styles.warningContent}>
-                <View style={styles.warningHeader}>
-                  <Text style={styles.warningType}>
-                    {item.type === "typhoon"
-                      ? "태풍"
-                      : item.type === "tornado"
-                      ? "토네이도"
-                      : "폭풍"}
-                  </Text>
-                  <View
-                    style={[
-                      styles.severityBadge,
-                      { backgroundColor: getSeverityColor(item.severity) },
-                    ]}
-                  >
-                    <Text style={styles.severityText}>
-                      {getSeverityText(item.severity)}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.arrivalTime}>
-                  예상 도달: {formatDate(item.estimatedArrivalTime)}
-                </Text>
-
-                <Text style={styles.intensityText}>
-                  예상 강도: {item.estimatedIntensity} km/h
-                </Text>
-
-                <Text numberOfLines={2} style={styles.safetyText}>
-                  {item.safetyInstructions}
-                </Text>
-
-                <View style={styles.viewDetails}>
-                  <Text style={styles.viewDetailsText}>자세히 보기</Text>
-                  <Feather name="chevron-right" size={16} color="#4A90E2" />
-                </View>
-              </View>
-            </TouchableOpacity>
-          )}
-          contentContainerStyle={styles.warningsList}
-        />
       )}
+
+      {prediction && (
+        <View style={styles.predictionContainer}>
+          <View style={styles.predictionHeader}>
+            <View style={[
+              styles.predictionIcon,
+              { backgroundColor: getPredictionColor(prediction.prediction) }
+            ]}>
+              <Feather 
+                name={getPredictionIcon(prediction.prediction)} 
+                size={32} 
+                color="#FFFFFF" 
+              />
+            </View>
+            <View style={styles.predictionInfo}>
+              <Text style={styles.predictionTitle}>현재 상태</Text>
+              <Text style={[
+                styles.predictionLevel,
+                { color: getPredictionColor(prediction.prediction) }
+              ]}>
+                {prediction.prediction}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.messageContainer}>
+            <Text style={styles.messageTitle}>상세 정보</Text>
+            <Text style={styles.messageText}>{prediction.message}</Text>
+          </View>
+
+          <View style={styles.actionContainer}>
+            <TouchableOpacity style={styles.actionButton} onPress={handleRefresh}>
+              <Feather name="refresh-cw" size={20} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>새로고침</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      <View style={styles.safetyTips}>
+        <Text style={styles.safetyTipsTitle}>안전 수칙</Text>
+        <View style={styles.safetyTip}>
+          <Feather name="check" size={16} color="#4CAF50" />
+          <Text style={styles.safetyTipText}>기상 정보를 정기적으로 확인하세요</Text>
+        </View>
+        <View style={styles.safetyTip}>
+          <Feather name="check" size={16} color="#4CAF50" />
+          <Text style={styles.safetyTipText}>안전 장비를 항상 점검하세요</Text>
+        </View>
+        <View style={styles.safetyTip}>
+          <Feather name="check" size={16} color="#4CAF50" />
+          <Text style={styles.safetyTipText}>위험 징후 발견 시 즉시 대피하세요</Text>
+        </View>
+      </View>
 
       <View style={styles.disclaimer}>
         <Feather name="info" size={16} color="#BBDEFB" />
         <Text style={styles.disclaimerText}>
-          경고 알림은 30분마다 자동으로 업데이트되며, 심각한 위험이 감지되면
-          즉시 알림이 발송됩니다.
+          재난 예측 정보는 참고용이며, 실제 항해 시에는 전문가의 조언을 구하시기 바랍니다.
         </Text>
       </View>
-    </View>
+    </ScrollView>
   );
 };
 
@@ -252,7 +213,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginBottom: 4,
   },
-  locationText: {
+  headerSubtitle: {
     fontSize: 14,
     color: "#BBDEFB",
   },
@@ -266,19 +227,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
   },
-  refreshButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-end",
-    padding: 12,
-    margin: 16,
-    backgroundColor: "rgba(25, 118, 210, 0.6)",
-    borderRadius: 8,
-  },
-  refreshText: {
-    color: "#FFFFFF",
-    marginLeft: 8,
-  },
   errorContainer: {
     flex: 1,
     justifyContent: "center",
@@ -287,89 +235,126 @@ const styles = StyleSheet.create({
   },
   errorText: {
     marginTop: 16,
-    color: "#FF6B6B",
+    color: "#F44336",
     fontSize: 16,
     textAlign: "center",
   },
-  noWarningsContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  noWarningsText: {
+  retryButton: {
     marginTop: 16,
-    color: "#4CAF50",
+    backgroundColor: "#1976D2",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: "#FFFFFF",
     fontSize: 16,
-    textAlign: "center",
+    fontWeight: "bold",
   },
-  warningsList: {
+  locationInfo: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: 16,
+    backgroundColor: "rgba(25, 118, 210, 0.1)",
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 8,
   },
-  warningCard: {
+  locationText: {
+    fontSize: 14,
+    color: "#BBDEFB",
+    marginLeft: 8,
+  },
+  predictionContainer: {
+    margin: 16,
     backgroundColor: "rgba(25, 118, 210, 0.2)",
     borderRadius: 12,
-    marginBottom: 16,
-    flexDirection: "row",
-    overflow: "hidden",
+    padding: 16,
   },
-  warningIcon: {
-    width: 70,
+  predictionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  predictionIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: "center",
     alignItems: "center",
   },
-  warningContent: {
+  predictionInfo: {
     flex: 1,
-    padding: 16,
+    marginLeft: 16,
   },
-  warningHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  predictionTitle: {
+    fontSize: 16,
+    color: "#BBDEFB",
+    marginBottom: 4,
+  },
+  predictionLevel: {
+    fontSize: 24,
+    fontWeight: "bold",
+  },
+  messageContainer: {
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+  },
+  messageTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#FFFFFF",
     marginBottom: 8,
   },
-  warningType: {
+  messageText: {
+    fontSize: 14,
+    color: "#BBDEFB",
+    lineHeight: 20,
+  },
+  actionContainer: {
+    alignItems: "center",
+  },
+  actionButton: {
+    backgroundColor: "#1976D2",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  actionButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginLeft: 8,
+  },
+  safetyTips: {
+    margin: 16,
+    backgroundColor: "rgba(0, 0, 0, 0.2)",
+    borderRadius: 12,
+    padding: 16,
+  },
+  safetyTipsTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: "#FFFFFF",
-  },
-  severityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  severityText: {
-    fontSize: 12,
-    color: "#FFFFFF",
-    fontWeight: "bold",
-  },
-  arrivalTime: {
-    fontSize: 14,
-    color: "#FFFFFF",
-    marginBottom: 4,
-  },
-  intensityText: {
-    fontSize: 14,
-    color: "#FFFFFF",
-    marginBottom: 8,
-  },
-  safetyText: {
-    fontSize: 14,
-    color: "#BBDEFB",
     marginBottom: 12,
   },
-  viewDetails: {
+  safetyTip: {
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 8,
   },
-  viewDetailsText: {
+  safetyTipText: {
     fontSize: 14,
-    color: "#4A90E2",
-    marginRight: 4,
+    color: "#BBDEFB",
+    marginLeft: 8,
   },
   disclaimer: {
     flexDirection: "row",
-    padding: 12,
+    padding: 16,
     backgroundColor: "rgba(0, 0, 0, 0.4)",
     alignItems: "flex-start",
   },
@@ -378,6 +363,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#BBDEFB",
     marginLeft: 8,
+    lineHeight: 16,
   },
 });
 

@@ -30,6 +30,11 @@ export interface RouteRecommendation {
   message: string;
 }
 
+export interface DisasterPrediction {
+  prediction: string;
+  message: string;
+}
+
 export interface WeatherOnRoute {
   point: GeoPoint;
   weather: WeatherData;
